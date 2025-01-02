@@ -6,7 +6,7 @@ use std::collections::HashMap;
 struct ApiInfo {
     path: String,
     method: String,
-    input: Option<Value>,
+    input: HashMap<String, String>,
     output: Option<Value>,
     swagger_url: String,
 }
@@ -28,7 +28,27 @@ async fn main() -> Result<(), Error> {
 
                 if let Some(methods_obj) = methods.as_object() {
                     for (method, details) in methods_obj {
-                        let input = details.get("parameters").cloned();
+                        let input = details
+                            .get("parameters")
+                            .unwrap()
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|param| {
+                                println!(">>>{:?}", param);
+                                let name = param.get("name").unwrap().as_str().unwrap().to_string();
+                                let schema_type = param
+                                    .get("schema")
+                                    .unwrap()
+                                    .get("type")
+                                    .unwrap()
+                                    .as_str()
+                                    .unwrap()
+                                    .to_string();
+
+                                (name, schema_type)
+                            })
+                            .collect::<HashMap<String, String>>();
                         let output = details.get("responses").cloned();
                         let api_info = ApiInfo {
                             path: path.clone(),
