@@ -7,7 +7,7 @@ struct ApiInfo {
     path: String,
     method: String,
     input: HashMap<String, String>,
-    output: Option<Value>,
+    output: Value,
     swagger_url: String,
 }
 
@@ -36,7 +36,6 @@ async fn main() -> Result<(), Error> {
                             .unwrap()
                             .iter()
                             .map(|param| {
-                                println!(">>>{:?}", param);
                                 let name = param.get("name").unwrap().as_str().unwrap().to_string();
                                 let schema_type = param
                                     .get("schema")
@@ -50,7 +49,48 @@ async fn main() -> Result<(), Error> {
                                 (name, schema_type)
                             })
                             .collect::<HashMap<String, String>>();
-                        let output = details.get("responses").cloned();
+                        let schema = details
+                            .get("responses")
+                            .unwrap()
+                            .get("200")
+                            .unwrap()
+                            .get("content")
+                            .unwrap()
+                            .as_object()
+                            .unwrap()
+                            .iter()
+                            .next()
+                            .unwrap()
+                            .1
+                            .get("schema")
+                            .unwrap();
+
+                        let _ref = match schema.get("type").unwrap().as_str().unwrap() == "array" {
+                            true => {
+                                schema
+                                    .get("items")
+                                    .unwrap()
+                                    .as_object()
+                                    .unwrap()
+                                    .into_iter()
+                                    .next()
+                                    .unwrap()
+                                    .1
+                            }
+                            false => schema.get("$ref").unwrap(),
+                        };
+
+                        let reference_id = _ref.as_str().unwrap().split("/").last().unwrap();
+
+                        let output_schema = json
+                            .get("components")
+                            .unwrap()
+                            .get("schemas")
+                            .unwrap()
+                            .get(reference_id)
+                            .unwrap();
+
+                        let output = output_schema.get("properties").unwrap().to_owned();
 
                         let tag = details
                             .get("tags")
