@@ -14,6 +14,7 @@ struct ApiInfo {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let url = "http://localhost:7771/hcp/v3/api-docs";
+    let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html#";
     let response = reqwest::get(url).await?;
     let json: Value = response.json().await?;
 
@@ -50,12 +51,25 @@ async fn main() -> Result<(), Error> {
                             })
                             .collect::<HashMap<String, String>>();
                         let output = details.get("responses").cloned();
+
+                        let tag = details
+                            .get("tags")
+                            .unwrap()
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .next()
+                            .unwrap()
+                            .as_str()
+                            .unwrap();
+                        let operation_id = details.get("operationId").unwrap().as_str().unwrap();
+                        let swagger_url = format!("{swagger_url_base}/{tag}/{operation_id}");
                         let api_info = ApiInfo {
                             path: path.clone(),
                             method: method.clone(),
                             input,
                             output,
-                            swagger_url: url.to_string(),
+                            swagger_url,
                         };
                         api_infos.push(api_info);
                     }
