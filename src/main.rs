@@ -1,3 +1,4 @@
+use anyhow::Result;
 use openapiv3::{OpenAPI, Parameter};
 use reqwest::Error;
 use serde_json::Value;
@@ -15,12 +16,27 @@ struct ApiInfo {
     swagger_url: String,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn json_from_url() -> Result<String, Error> {
     let url = "http://localhost:7771/hcp/v3/api-docs";
-    let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html#";
     let response = reqwest::get(url).await?;
-    let json_str = response.text().await?;
+
+    response.text().await
+}
+
+fn json_from_file() -> Result<String> {
+    let file = std::fs::File::open("data/api-docs.json")?;
+    let reader = std::io::BufReader::new(file);
+    let json: Value = serde_json::from_reader(reader)?;
+
+    Ok(json.to_string())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html#";
+    // let json_str = json_from_url().await?;
+    let json_str = json_from_file()?;
+
     // let json: Value = response.json().await?;
     let openapi: OpenAPI = serde_json::from_str(&json_str).expect("Could not deserialize input");
 
