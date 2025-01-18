@@ -1,4 +1,5 @@
 use anyhow::Result;
+use humbler::utils::ReferenceOrExt;
 use openapiv3::{OpenAPI, Parameter};
 use reqwest::Error;
 use serde_json::Value;
@@ -43,6 +44,7 @@ async fn main() -> Result<()> {
     // println!("{:?}", openapi);
 
     openapi
+        .clone()
         .paths
         .into_iter()
         // .filter(|(path, reference_or_path_item)| path == "/hcp/api/pms/pms-projects")
@@ -99,7 +101,16 @@ async fn main() -> Result<()> {
 
                     // println!("{:#?}", content);
                     if let Some(schema) = content.schema {
-                        println!("{:#?}", schema);
+                        let reference = schema.into_reference().unwrap();
+                        // #/components/schemas/CreatePmsProjectRequest"
+                        //
+                        let key = reference.split("/").last().unwrap();
+                        let components = openapi.clone().components.unwrap();
+
+                        let x = components.schemas.iter().find(|(k, _)| k == &key).unwrap();
+
+                        print!("{:?}", x);
+                        // ("CreatePmsProjectRequest", Item(Schema { schema_data: SchemaData { nullable: false, read_only: false, write_only: false, deprecated: false, external_docs: None, example: None, title: Some("CreatePmsProjectRequest"), description: None, discriminator: None, default: None, extensions: {} }, schema_kind: Type(Object(ObjectType { properties: {"pmsPrjCd": Item(Schema { schema_data: SchemaData { nullable: false, read_only: false, write_only: false, deprecated: false, external_docs: None, example: None, title: None, description: None, discriminator: None, default: None, extensions: {} }, schema_kind: Type(String(StringType { format: Empty, pattern: None, enumeration: [], min_length: None, max_length: None })) })}, required: [], additional_properties: None, min_properties: None, max_properties: None })) }))%
                     }
 
                     // let schema = content.schema.unwrap();
