@@ -1,6 +1,6 @@
 use anyhow::Result;
 use humbler::utils::ReferenceOrExt;
-use openapiv3::{OpenAPI, Parameter, PathItem, Responses};
+use openapiv3::{OpenAPI, Parameter, PathItem, ReferenceOr, Responses};
 use reqwest::Error;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -33,7 +33,7 @@ fn json_from_file() -> Result<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html#";
+    let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html";
     // let json_str = json_from_url().await?;
     let json_str = json_from_file()?;
 
@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
         .paths
         .into_iter()
         // .filter(|(path, reference_or_path_item)| path == "/hcp/api/pms/pms-projects")
-        .filter(|(path, reference_or_path_item)| path == "/hcp/api/pms/pms-hcp-prj-map/{hcpPrjCd}")
+        // .filter(|(path, reference_or_path_item)| path == "/hcp/api/pms/pms-hcp-prj-map/{hcpPrjCd}")
         .filter(|(path, reference_or_path_item)| reference_or_path_item.as_item().is_some())
         .flat_map(|(path, reference_or_path_item)| {
             let path_item = reference_or_path_item.into_item().unwrap();
@@ -127,22 +127,41 @@ async fn main() -> Result<()> {
                         .into_iter()
                         .map(|(status_code, response)| {
                             let response = response.into_item().unwrap();
+                            println!("response: {:#?}", response);
                             let content = response.content.into_iter().next().unwrap().1;
                             let schema = content.schema.unwrap();
-                            let reference = schema.into_reference().unwrap();
-                            let key = reference.split("/").last().unwrap();
-                            let schema = components
-                                .schemas
-                                .iter()
-                                .find(|(k, _)| k == &key)
-                                .unwrap()
-                                .1
-                                .clone()
-                                .into_item()
-                                .unwrap();
+                            let schema = match schema {
+                                ReferenceOr::Reference { reference } => {
+                                    let key = reference.split("/").last().unwrap();
+                                    components
+                                        .schemas
+                                        .iter()
+                                        .find(|(k, _)| k == &key)
+                                        .unwrap()
+                                        .1
+                                        .clone()
+                                        .into_item()
+                                        .unwrap()
+                                }
+                                ReferenceOr::Item(schema) => schema,
+                            };
                             let schema_json: Value = serde_json::to_value(&schema).unwrap();
 
                             schema_json
+                            // let reference = schema.into_reference().unwrap();
+                            // let key = reference.split("/").last().unwrap();
+                            // let schema = components
+                            //     .schemas
+                            //     .iter()
+                            //     .find(|(k, _)| k == &key)
+                            //     .unwrap()
+                            //     .1
+                            //     .clone()
+                            //     .into_item()
+                            //     .unwrap();
+                            // let schema_json: Value = serde_json::to_value(&schema).unwrap();
+                            //
+                            // schema_json
                         })
                         .next()
                         .unwrap();
