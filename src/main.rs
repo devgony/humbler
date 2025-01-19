@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use openapiv3::{Components, MediaType, OpenAPI, Parameter, PathItem, ReferenceOr, Responses};
 use reqwest::Error;
 use serde_json::Value;
-use std::{collections::HashMap, hash::RandomState};
+use std::{collections::HashMap, fmt::format, hash::RandomState};
 
 #[derive(Debug)]
 struct ApiInfo {
@@ -25,7 +25,8 @@ async fn json_from_url() -> Result<String, Error> {
 }
 
 fn json_from_file() -> Result<String> {
-    let file = std::fs::File::open("data/api-docs.json")?;
+    // let file = std::fs::File::open("data/api-docs.json")?;
+    let file = std::fs::File::open("data/pet.json")?;
     let reader = std::io::BufReader::new(file);
     let json: Value = serde_json::from_reader(reader)?;
 
@@ -63,7 +64,7 @@ async fn main() -> Result<()> {
                     let parameters = operation
                         .parameters
                         .into_iter()
-                        .map(|param| {
+                        .filter_map(|param| {
                             let param = param.into_item().unwrap();
                             match param {
                                 Parameter::Query { parameter_data, .. }
@@ -86,9 +87,11 @@ async fn main() -> Result<()> {
                                         openapiv3::ParameterSchemaOrContent::Content(_) => todo!(),
                                     };
 
-                                    (name, schema_type.to_owned())
+                                    Some((name, schema_type.to_owned()))
                                 }
-                                _ => {
+                                // skip header parameters for now, no todo
+                                Parameter::Header { .. } => None,
+                                x => {
                                     todo!()
                                 }
                             }
@@ -107,6 +110,7 @@ async fn main() -> Result<()> {
                         responses,
                         extensions,
                     } = operation.responses;
+
                     let response = responses
                         .into_iter()
                         .map(|(status_code, response)| {
@@ -115,7 +119,7 @@ async fn main() -> Result<()> {
                             content_to_value(content, components.clone())
                         })
                         .next()
-                        .unwrap();
+                        .flatten();
 
                     ApiInfo {
                         path: path.clone(),
@@ -131,7 +135,8 @@ async fn main() -> Result<()> {
         })
         .collect::<Vec<ApiInfo>>();
 
-    println!("{:#?}", api_infos);
+    let markdown = render_markdown_table(api_infos);
+    println!("{:#?}", markdown);
 
     Ok(())
 }
@@ -160,4 +165,34 @@ fn content_to_value(
 
         schema_json
     })
+}
+
+fn render_markdown_table(api_infos: Vec<ApiInfo>) -> String {
+    let mut markdown = String::new();
+    markdown.push_str("| Path | Method | Parameters | Request Body | Response | Swagger URL |\n");
+    markdown.push_str("| ---- | ------ | ---------- | ------------ | -------- | ----------- |\n");
+    for api_info in api_infos {
+        let path = api_info.path;
+        let method = api_info.method;
+        let parameters = api_info
+            .parameters
+            .into_iter()
+            .map(|(name, schema_type)| format!("{}: {}", name, schema_type))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let request_body = api_info
+            .request_body
+            .map(|request_body| request_body.to_string())
+            .unwrap_or_default();
+        let response = api_info
+            .response
+            .map(|response| response.to_string())
+            .unwrap_or_default();
+        let swagger_url = api_info.swagger_url;
+        markdown.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            path, method, parameters, request_body, response, swagger_url
+        ));
+    }
+    markdown
 }
