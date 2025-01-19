@@ -35,7 +35,8 @@ fn json_from_file() -> Result<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html";
+    // let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html";
+    let swagger_url_base = "http://localhost:4000/swagger-ui/index.html";
     // let json_str = json_from_url().await?;
     let json_str = json_from_file()?;
 
