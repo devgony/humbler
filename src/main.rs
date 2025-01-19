@@ -1,9 +1,10 @@
 use anyhow::Result;
 use humbler::utils::ReferenceOrExt;
-use openapiv3::{OpenAPI, Parameter, PathItem, ReferenceOr, Responses};
+use indexmap::IndexMap;
+use openapiv3::{Components, MediaType, OpenAPI, Parameter, PathItem, ReferenceOr, Responses};
 use reqwest::Error;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::RandomState};
 
 #[derive(Debug)]
 struct ApiInfo {
@@ -12,7 +13,7 @@ struct ApiInfo {
     parameters: HashMap<String, String>,
     request_body: Option<Value>,
     // responses: Responses,
-    response: Value,
+    response: Option<Value>,
     swagger_url: String,
 }
 
@@ -96,26 +97,9 @@ async fn main() -> Result<()> {
                         })
                         .collect::<HashMap<String, String>>();
                     let request_body = operation.request_body.and_then(|request_body| {
-                        let request_body = request_body.into_item().unwrap();
-                        let content = request_body.content.into_iter().next().unwrap().1;
+                        let content = request_body.into_item().unwrap().content;
 
-                        content.schema.map(|schema| {
-                            let reference = schema.into_reference().unwrap();
-                            let key = reference.split("/").last().unwrap();
-                            // let components = components.clone();
-                            let schema = components
-                                .schemas
-                                .iter()
-                                .find(|(k, _)| k == &key)
-                                .unwrap()
-                                .1
-                                .clone()
-                                .into_item()
-                                .unwrap();
-                            let schema_json: Value = serde_json::to_value(&schema).unwrap();
-
-                            schema_json
-                        })
+                        content_to_value(content, components.clone())
                     });
 
                     let Responses {
@@ -126,42 +110,9 @@ async fn main() -> Result<()> {
                     let response = responses
                         .into_iter()
                         .map(|(status_code, response)| {
-                            let response = response.into_item().unwrap();
-                            println!("response: {:#?}", response);
-                            let content = response.content.into_iter().next().unwrap().1;
-                            let schema = content.schema.unwrap();
-                            let schema = match schema {
-                                ReferenceOr::Reference { reference } => {
-                                    let key = reference.split("/").last().unwrap();
-                                    components
-                                        .schemas
-                                        .iter()
-                                        .find(|(k, _)| k == &key)
-                                        .unwrap()
-                                        .1
-                                        .clone()
-                                        .into_item()
-                                        .unwrap()
-                                }
-                                ReferenceOr::Item(schema) => schema,
-                            };
-                            let schema_json: Value = serde_json::to_value(&schema).unwrap();
+                            let content = response.into_item().unwrap().content;
 
-                            schema_json
-                            // let reference = schema.into_reference().unwrap();
-                            // let key = reference.split("/").last().unwrap();
-                            // let schema = components
-                            //     .schemas
-                            //     .iter()
-                            //     .find(|(k, _)| k == &key)
-                            //     .unwrap()
-                            //     .1
-                            //     .clone()
-                            //     .into_item()
-                            //     .unwrap();
-                            // let schema_json: Value = serde_json::to_value(&schema).unwrap();
-                            //
-                            // schema_json
+                            content_to_value(content, components.clone())
                         })
                         .next()
                         .unwrap();
@@ -171,7 +122,7 @@ async fn main() -> Result<()> {
                         method: method.to_string(),
                         parameters,
                         request_body,
-                        response,
+                        response, // if response has only Description:OK, then it is None for now
                         swagger_url,
                     }
                     // let request_body = operation.request_body.unwrap().into_item().unwrap().content;
@@ -183,4 +134,30 @@ async fn main() -> Result<()> {
     println!("{:#?}", api_infos);
 
     Ok(())
+}
+
+fn content_to_value(
+    content: IndexMap<String, MediaType, RandomState>,
+    components: Components,
+) -> Option<Value> {
+    content.into_iter().next().map(|(_, media_type)| {
+        let schema = match media_type.schema.unwrap() {
+            ReferenceOr::Reference { reference } => {
+                let key = reference.split("/").last().unwrap();
+                components
+                    .schemas
+                    .iter()
+                    .find(|(k, _)| k == &key)
+                    .unwrap()
+                    .1
+                    .clone()
+                    .into_item()
+                    .unwrap()
+            }
+            ReferenceOr::Item(schema) => schema,
+        };
+        let schema_json: Value = serde_json::to_value(&schema).unwrap();
+
+        schema_json
+    })
 }
