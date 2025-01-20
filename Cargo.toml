@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.95"
+dotenv = "0.15.0"
 indexmap = "2.7.0"
 openapiv3 = "2.0.0"
 reqwest = { version = "0.11", features = ["json"] }

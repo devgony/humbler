@@ -1,10 +1,10 @@
 use anyhow::Result;
-use humbler::utils::ReferenceOrExt;
+use dotenv::dotenv;
 use indexmap::IndexMap;
-use openapiv3::{Components, MediaType, OpenAPI, Parameter, PathItem, ReferenceOr, Responses};
+use openapiv3::{Components, MediaType, OpenAPI, Parameter, ReferenceOr, Responses};
 use reqwest::Error;
 use serde_json::Value;
-use std::{collections::HashMap, fmt::format, hash::RandomState};
+use std::{collections::HashMap, env, hash::RandomState};
 
 #[derive(Debug)]
 struct ApiInfo {
@@ -12,13 +12,12 @@ struct ApiInfo {
     method: String,
     parameters: HashMap<String, String>,
     request_body: Option<Value>,
-    // responses: Responses,
     response: Option<Value>,
     swagger_url: String,
 }
 
 async fn json_from_url() -> Result<String, Error> {
-    let url = "http://localhost:7771/hcp/v3/api-docs";
+    let url = env::var("OPENAPI_JSON_URL").expect("OPENAPI_JSON_URL must be set");
     let response = reqwest::get(url).await?;
 
     response.text().await
@@ -35,12 +34,10 @@ fn json_from_file() -> Result<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // let swagger_url_base = "http://localhost:7771/hcp/swagger-ui/index.html";
-    let swagger_url_base = "http://localhost:4000/swagger-ui/index.html";
-    // let json_str = json_from_url().await?;
-    let json_str = json_from_file()?;
-
-    // let json: Value = response.json().await?;
+    dotenv().ok();
+    let swagger_ui_url = &env::var("SWAGGER_UI_URL").expect("SWAGGER_UI_URL must be set");
+    let json_str = json_from_url().await?;
+    // let json_str = json_from_file()?;
     let openapi: OpenAPI = serde_json::from_str(&json_str).expect("Could not deserialize input");
 
     let api_infos = openapi
@@ -61,7 +58,7 @@ async fn main() -> Result<()> {
                 move |(method, operation)| {
                     let operation_id = operation.operation_id.unwrap();
                     let tag = operation.tags.into_iter().next().unwrap();
-                    let swagger_url = format!("{swagger_url_base}/{tag}/{operation_id}");
+                    let swagger_url = format!("{swagger_ui_url}/{tag}/{operation_id}");
                     let parameters = operation
                         .parameters
                         .into_iter()
