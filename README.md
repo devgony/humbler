@@ -4,7 +4,8 @@
 
 ## Todo
 
-- [ ] Add tests
-- [ ] split parameters and requestBody
+- [x] split parameters and requestBody
 - [ ] handle various cases for schama
+- [ ] handle recursive ref
+- [ ] Add tests
 - [ ] Support terminal UI
