@@ -29,14 +29,13 @@ impl Humbler {
     }
 
     pub async fn run(&self) -> Result<String> {
-        let json_str = match self.openapi_json_url.starts_with("http") {
-            true => self.json_from_url().await?,
-            false => json_from_file()?,
-        };
-        // let json_str = json_from_file()?;
-        let openapi: OpenAPI =
-            serde_json::from_str(&json_str).expect("Could not deserialize input");
+        let api_infos = self.get_api_infos().await?;
 
+        Ok(render_markdown_table(api_infos))
+    }
+
+    async fn get_api_infos(&self) -> Result<Vec<ApiInfo>, anyhow::Error> {
+        let openapi = self.get_openapi().await?;
         let api_infos =
             openapi
                 .clone()
@@ -132,8 +131,17 @@ impl Humbler {
                     })
                 })
                 .collect::<Vec<ApiInfo>>();
+        Ok(api_infos)
+    }
 
-        Ok(render_markdown_table(api_infos))
+    async fn get_openapi(&self) -> Result<OpenAPI, anyhow::Error> {
+        let json_str = match self.openapi_json_url.starts_with("http") {
+            true => self.json_from_url().await?,
+            false => json_from_file()?,
+        };
+        let openapi: OpenAPI =
+            serde_json::from_str(&json_str).expect("Could not deserialize input");
+        Ok(openapi)
     }
 
     async fn json_from_url(&self) -> Result<String, Error> {
@@ -210,4 +218,62 @@ fn json_from_file() -> Result<String> {
     let json: Value = serde_json::from_reader(reader)?;
 
     Ok(json.to_string())
+}
+
+mod tests {
+    use super::*;
+    use dotenv::dotenv;
+    use openapiv3::{ArrayType, Schema, SchemaData, SchemaKind, StringType, Type};
+
+    #[tokio::test]
+    async fn content_to_value_test() {
+        dotenv().ok();
+        let swagger_ui_url = &env::var("SWAGGER_UI_URL").expect("SWAGGER_UI_URL must be set");
+        let openapi_json_url = &env::var("OPENAPI_JSON_URL").expect("OPENAPI_JSON_URL must be set");
+
+        let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
+        let openapi = humbler.get_openapi().await.unwrap();
+        let components = openapi.components.clone().unwrap();
+
+        let content = {
+            let mut content = IndexMap::new();
+            let schema = Schema {
+                schema_kind: SchemaKind::Type(Type::Array(ArrayType {
+                    items: Some(ReferenceOr::Reference {
+                        reference: "#/components/schemas/User".to_owned(),
+                    }),
+                    min_items: None,
+                    max_items: None,
+                    unique_items: false,
+                })),
+                schema_data: SchemaData {
+                    nullable: false,
+                    read_only: false,
+                    write_only: false,
+                    deprecated: false,
+                    external_docs: None,
+                    example: None,
+                    title: None,
+                    description: None,
+                    discriminator: None,
+                    default: None,
+                    extensions: Default::default(),
+                },
+            };
+            let media_type = MediaType {
+                schema: Some(ReferenceOr::Item(schema)),
+                example: None,
+                examples: Default::default(),
+                encoding: Default::default(),
+                extensions: Default::default(),
+            };
+            content.insert("application/json".to_owned(), media_type);
+
+            content
+        };
+        let actual = content_to_value(content, components);
+        // {\"items\":{\"$ref\":\"#/components/schemas/User\"},\"type\":\"array\"}
+        let expected = "{\"items\":{\"$ref\":\"#/components/schemas/User\"},\"type\":\"array\"}";
+        assert_eq!(actual.unwrap().to_string(), expected);
+    }
 }
