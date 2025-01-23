@@ -1,6 +1,9 @@
 use anyhow::Result;
 use indexmap::IndexMap;
-use openapiv3::{Components, MediaType, OpenAPI, Parameter, ReferenceOr, Responses};
+use openapiv3::{
+    ArrayType, Components, MediaType, ObjectType, OpenAPI, Parameter, ReferenceOr, Responses,
+    Schema, SchemaKind,
+};
 use reqwest::Error;
 use serde_json::Value;
 use std::{collections::HashMap, env, hash::RandomState};
@@ -10,8 +13,8 @@ struct ApiInfo {
     path: String,
     method: String,
     parameters: HashMap<String, String>,
-    request_body: Option<Value>,
-    response: Option<Value>,
+    request_body: Option<String>,
+    response: Option<String>,
     swagger_url: String,
 }
 
@@ -155,27 +158,60 @@ impl Humbler {
 fn content_to_value(
     content: IndexMap<String, MediaType, RandomState>,
     components: Components,
-) -> Option<Value> {
+) -> Option<String> {
+    println!("media_type: {:#?}", content);
     content.into_iter().next().map(|(_, media_type)| {
-        let schema = match media_type.schema.unwrap() {
-            ReferenceOr::Reference { reference } => {
-                let key = reference.split("/").last().unwrap();
-                components
-                    .schemas
-                    .iter()
-                    .find(|(k, _)| k == &key)
-                    .unwrap()
-                    .1
-                    .clone()
-                    .into_item()
-                    .unwrap()
-            }
-            ReferenceOr::Item(schema) => schema,
-        };
-        let schema_json: Value = serde_json::to_value(&schema).unwrap();
+        let ref_or_schema = media_type.schema.unwrap();
 
-        schema_json
+        parse_schema(components, ref_or_schema)
     })
+}
+
+fn parse_schema(components: Components, ref_or_schema: ReferenceOr<Schema>) -> String {
+    let schema = match ref_or_schema {
+        ReferenceOr::Reference { reference } => {
+            let key = reference.split("/").last().unwrap();
+            components
+                .schemas
+                .iter()
+                .find(|(k, _)| k == &key)
+                .unwrap()
+                .1
+                .clone()
+                .into_item()
+                .unwrap()
+        }
+        ReferenceOr::Item(schema) => schema,
+    };
+
+    let result = match schema.schema_kind {
+        SchemaKind::Type(_type) => match _type {
+            openapiv3::Type::String(_) => "string".to_owned(),
+            openapiv3::Type::Number(_) => "number".to_owned(),
+            openapiv3::Type::Integer(_) => "integer".to_owned(),
+            openapiv3::Type::Boolean(_) => "boolean".to_owned(),
+            openapiv3::Type::Array(ArrayType { items, .. }) => {
+                let items = items.unwrap();
+                let schema_type = parse_schema(components.clone(), items.unbox());
+
+                format!("[{schema_type}]")
+            }
+            openapiv3::Type::Object(ObjectType { properties, .. }) => {
+                let map = properties
+                    .into_iter()
+                    .map(|(s, ref_or_schema)| {
+                        (s, parse_schema(components.clone(), ref_or_schema.unbox()))
+                    })
+                    .collect::<IndexMap<String, String>>();
+
+                // >>>{"category":"{\"id\":\"integer\",\"name\":\"string\"}","id":"integer","name":"string","photoUrls":"[string]","status":"string","tags":"[{\"id\":\"integer\",\"name\":\"string\"}]"}
+                serde_json::to_string(&map).unwrap() // TODO: to_string should not excape double quotes
+            }
+        },
+        _ => todo!(),
+    };
+
+    result
 }
 
 fn render_markdown_table(api_infos: Vec<ApiInfo>) -> String {
@@ -273,7 +309,7 @@ mod tests {
         };
         let actual = content_to_value(content, components);
         // {\"items\":{\"$ref\":\"#/components/schemas/User\"},\"type\":\"array\"}
-        let expected = "{\"items\":{\"$ref\":\"#/components/schemas/User\"},\"type\":\"array\"}";
+        let expected = r#"[{"email":"string","firstName":"string","id":"integer","lastName":"string","password":"string","phone":"string","userStatus":"integer","username":"string"}]"#;
         assert_eq!(actual.unwrap().to_string(), expected);
     }
 }
