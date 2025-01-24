@@ -5,7 +5,7 @@ use openapiv3::{
     Schema, SchemaKind,
 };
 use reqwest::Error;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{collections::HashMap, env, hash::RandomState};
 
 #[derive(Debug)]
@@ -163,11 +163,11 @@ fn content_to_value(
     content.into_iter().next().map(|(_, media_type)| {
         let ref_or_schema = media_type.schema.unwrap();
 
-        parse_schema(components, ref_or_schema)
+        parse_schema(components, ref_or_schema).to_string()
     })
 }
 
-fn parse_schema(components: Components, ref_or_schema: ReferenceOr<Schema>) -> String {
+fn parse_schema(components: Components, ref_or_schema: ReferenceOr<Schema>) -> Value {
     let schema = match ref_or_schema {
         ReferenceOr::Reference { reference } => {
             let key = reference.split("/").last().unwrap();
@@ -186,15 +186,15 @@ fn parse_schema(components: Components, ref_or_schema: ReferenceOr<Schema>) -> S
 
     let result = match schema.schema_kind {
         SchemaKind::Type(_type) => match _type {
-            openapiv3::Type::String(_) => "string".to_owned(),
-            openapiv3::Type::Number(_) => "number".to_owned(),
-            openapiv3::Type::Integer(_) => "integer".to_owned(),
-            openapiv3::Type::Boolean(_) => "boolean".to_owned(),
+            openapiv3::Type::String(_) => json!("string"),
+            openapiv3::Type::Number(_) => json!("number"),
+            openapiv3::Type::Integer(_) => json!("integer"),
+            openapiv3::Type::Boolean(_) => json!("boolean"),
             openapiv3::Type::Array(ArrayType { items, .. }) => {
                 let items = items.unwrap();
                 let schema_type = parse_schema(components.clone(), items.unbox());
 
-                format!("[{schema_type}]")
+                json!([schema_type])
             }
             openapiv3::Type::Object(ObjectType { properties, .. }) => {
                 let map = properties
@@ -202,10 +202,10 @@ fn parse_schema(components: Components, ref_or_schema: ReferenceOr<Schema>) -> S
                     .map(|(s, ref_or_schema)| {
                         (s, parse_schema(components.clone(), ref_or_schema.unbox()))
                     })
-                    .collect::<IndexMap<String, String>>();
+                    .collect::<serde_json::Map<String, serde_json::Value>>();
 
                 // >>>{"category":"{\"id\":\"integer\",\"name\":\"string\"}","id":"integer","name":"string","photoUrls":"[string]","status":"string","tags":"[{\"id\":\"integer\",\"name\":\"string\"}]"}
-                serde_json::to_string(&map).unwrap() // TODO: to_string should not excape double quotes
+                serde_json::Value::Object(map)
             }
         },
         _ => todo!(),
