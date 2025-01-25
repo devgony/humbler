@@ -44,15 +44,10 @@ impl Humbler {
                 .clone()
                 .paths
                 .into_iter()
-                // .filter(|(path, reference_or_path_item)| path == "/hcp/api/pms/pms-projects")
-                // .filter(|(path, reference_or_path_item)| path == "/hcp/api/pms/pms-hcp-prj-map/{hcpPrjCd}")
                 .filter(|(path, reference_or_path_item)| reference_or_path_item.as_item().is_some())
                 .flat_map(|(path, reference_or_path_item)| {
                     let path_item = reference_or_path_item.into_item().unwrap();
-                    // let operation = path_item.into_iter().next().unwrap().1;
-                    //
-                    //
-                    // there can be multiple operations for a path: put, get, post, delete, etc.
+
                     path_item.into_iter().map({
                         let components = openapi.components.clone().unwrap();
                         move |(method, operation)| {
@@ -74,12 +69,12 @@ impl Humbler {
                                         openapiv3::ParameterSchemaOrContent::Schema(schema) => {
                                             match schema.into_item().unwrap().schema_kind {
                                                 openapiv3::SchemaKind::Type(_type) => match _type {
-                                                    openapiv3::Type::String(_) => "String",
-                                                    openapiv3::Type::Number(_) => "Number",
-                                                    openapiv3::Type::Integer(_) => "Integer",
-                                                    openapiv3::Type::Boolean(_) => "Boolean",
-                                                    openapiv3::Type::Array(_) => "Array",
-                                                    openapiv3::Type::Object(_) => "Object",
+                                                    openapiv3::Type::String(_) => "string",
+                                                    openapiv3::Type::Number(_) => "number",
+                                                    openapiv3::Type::Integer(_) => "integer",
+                                                    openapiv3::Type::Boolean(_) => "boolean",
+                                                    openapiv3::Type::Array(_) => "array",
+                                                    openapiv3::Type::Object(_) => "object",
                                                 },
                                                 _ => todo!(),
                                             }
@@ -95,8 +90,6 @@ impl Humbler {
                                                 todo!()
                                             }
                                         }
-                                        // let name = param.name;
-                                        // let schema_type = param.schema.unwrap().schema_type;
                                     })
                                     .collect::<HashMap<String, String>>();
                             let request_body = operation.request_body.and_then(|request_body| {
@@ -148,7 +141,6 @@ impl Humbler {
     }
 
     async fn json_from_url(&self) -> Result<String, Error> {
-        // let url = env::var("OPENAPI_JSON_URL").expect("OPENAPI_JSON_URL must be set");
         let response = reqwest::get(&self.openapi_json_url).await?;
 
         response.text().await
@@ -308,7 +300,6 @@ mod tests {
             content
         };
         let actual = content_to_value(content, components);
-        // {\"items\":{\"$ref\":\"#/components/schemas/User\"},\"type\":\"array\"}
         let expected = r#"[{"email":"string","firstName":"string","id":"integer","lastName":"string","password":"string","phone":"string","userStatus":"integer","username":"string"}]"#;
         assert_eq!(actual.unwrap().to_string(), expected);
     }
