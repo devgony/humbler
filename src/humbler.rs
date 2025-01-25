@@ -39,94 +39,83 @@ impl Humbler {
 
     async fn get_api_infos(&self) -> Result<Vec<ApiInfo>, anyhow::Error> {
         let openapi = self.get_openapi().await?;
-        let api_infos =
-            openapi
-                .clone()
-                .paths
-                .into_iter()
-                .filter(|(path, reference_or_path_item)| reference_or_path_item.as_item().is_some())
-                .flat_map(|(path, reference_or_path_item)| {
-                    let path_item = reference_or_path_item.into_item().unwrap();
+        let api_infos = openapi
+            .clone()
+            .paths
+            .into_iter()
+            .filter(|(path, reference_or_path_item)| reference_or_path_item.as_item().is_some())
+            .flat_map(|(path, reference_or_path_item)| {
+                let path_item = reference_or_path_item.into_item().unwrap();
 
-                    path_item.into_iter().map({
-                        let components = openapi.components.clone().unwrap();
-                        move |(method, operation)| {
-                            let operation_id = operation.operation_id.unwrap();
-                            let tag = operation.tags.into_iter().next().unwrap();
-                            let swagger_url =
-                                format!("{}/{tag}/{operation_id}", self.swagger_ui_url);
-                            let parameters =
-                                operation
-                                    .parameters
-                                    .into_iter()
-                                    .filter_map(|param| {
-                                        let param = param.into_item().unwrap();
-                                        match param {
-                                            Parameter::Query { parameter_data, .. }
-                                            | Parameter::Path { parameter_data, .. } => {
-                                                let name = parameter_data.name;
-                                                let schema_type = match parameter_data.format {
-                                        openapiv3::ParameterSchemaOrContent::Schema(schema) => {
-                                            match schema.into_item().unwrap().schema_kind {
-                                                openapiv3::SchemaKind::Type(_type) => match _type {
-                                                    openapiv3::Type::String(_) => "string",
-                                                    openapiv3::Type::Number(_) => "number",
-                                                    openapiv3::Type::Integer(_) => "integer",
-                                                    openapiv3::Type::Boolean(_) => "boolean",
-                                                    openapiv3::Type::Array(_) => "array",
-                                                    openapiv3::Type::Object(_) => "object",
-                                                },
-                                                _ => todo!(),
+                path_item.into_iter().map({
+                    let components = openapi.components.as_ref().unwrap();
+                    move |(method, operation)| {
+                        let operation_id = operation.operation_id.unwrap();
+                        let tag = operation.tags.into_iter().next().unwrap();
+                        let swagger_url = format!("{}/{tag}/{operation_id}", self.swagger_ui_url);
+                        let parameters = operation
+                            .parameters
+                            .into_iter()
+                            .filter_map(|param| {
+                                let param = param.into_item().unwrap();
+                                match param {
+                                    Parameter::Query { parameter_data, .. }
+                                    | Parameter::Path { parameter_data, .. } => {
+                                        let name = parameter_data.name;
+                                        let schema_type = match parameter_data.format {
+                                            openapiv3::ParameterSchemaOrContent::Schema(schema) => {
+                                                parse_schema(components, schema).to_string()
                                             }
-                                        }
-                                        openapiv3::ParameterSchemaOrContent::Content(_) => todo!(),
-                                    };
-
-                                                Some((name, schema_type.to_owned()))
-                                            }
-                                            // skip header parameters for now, no todo
-                                            Parameter::Header { .. } => None,
-                                            x => {
+                                            openapiv3::ParameterSchemaOrContent::Content(_) => {
                                                 todo!()
                                             }
-                                        }
-                                    })
-                                    .collect::<HashMap<String, String>>();
-                            let request_body = operation.request_body.and_then(|request_body| {
-                                let content = request_body.into_item().unwrap().content;
+                                        };
 
-                                content_to_value(content, components.clone())
-                            });
+                                        Some((name, schema_type.to_owned()))
+                                    }
+                                    // skip header parameters for now, no todo
+                                    Parameter::Header { .. } => None,
+                                    x => {
+                                        todo!()
+                                    }
+                                }
+                            })
+                            .collect::<HashMap<String, String>>();
+                        let request_body = operation.request_body.and_then(|request_body| {
+                            let content = request_body.into_item().unwrap().content;
 
-                            let Responses {
-                                default,
-                                responses,
-                                extensions,
-                            } = operation.responses;
+                            content_to_value(content, components)
+                        });
 
-                            let response = responses
-                                .into_iter()
-                                .map(|(status_code, response)| {
-                                    let content = response.into_item().unwrap().content;
+                        let Responses {
+                            default,
+                            responses,
+                            extensions,
+                        } = operation.responses;
 
-                                    content_to_value(content, components.clone())
-                                })
-                                .next()
-                                .flatten();
+                        let response = responses
+                            .into_iter()
+                            .map(|(status_code, response)| {
+                                let content = response.into_item().unwrap().content;
 
-                            ApiInfo {
-                                path: path.clone(),
-                                method: method.to_string(),
-                                parameters,
-                                request_body,
-                                response, // if response has only Description:OK, then it is None for now
-                                swagger_url,
-                            }
-                            // let request_body = operation.request_body.unwrap().into_item().unwrap().content;
+                                content_to_value(content, components)
+                            })
+                            .next()
+                            .flatten();
+
+                        ApiInfo {
+                            path: path.clone(),
+                            method: method.to_string(),
+                            parameters,
+                            request_body,
+                            response, // if response has only Description:OK, then it is None for now
+                            swagger_url,
                         }
-                    })
+                        // let request_body = operation.request_body.unwrap().into_item().unwrap().content;
+                    }
                 })
-                .collect::<Vec<ApiInfo>>();
+            })
+            .collect::<Vec<ApiInfo>>();
         Ok(api_infos)
     }
 
@@ -149,17 +138,17 @@ impl Humbler {
 
 fn content_to_value(
     content: IndexMap<String, MediaType, RandomState>,
-    components: Components,
+    components: &Components,
 ) -> Option<String> {
     println!("media_type: {:#?}", content);
     content.into_iter().next().map(|(_, media_type)| {
         let ref_or_schema = media_type.schema.unwrap();
 
-        parse_schema(components, ref_or_schema).to_string()
+        parse_schema(&components, ref_or_schema).to_string()
     })
 }
 
-fn parse_schema(components: Components, ref_or_schema: ReferenceOr<Schema>) -> Value {
+fn parse_schema(components: &Components, ref_or_schema: ReferenceOr<Schema>) -> Value {
     let schema = match ref_or_schema {
         ReferenceOr::Reference { reference } => {
             let key = reference.split("/").last().unwrap();
@@ -184,16 +173,14 @@ fn parse_schema(components: Components, ref_or_schema: ReferenceOr<Schema>) -> V
             openapiv3::Type::Boolean(_) => json!("boolean"),
             openapiv3::Type::Array(ArrayType { items, .. }) => {
                 let items = items.unwrap();
-                let schema_type = parse_schema(components.clone(), items.unbox());
+                let schema_type = parse_schema(&components, items.unbox());
 
                 json!([schema_type])
             }
             openapiv3::Type::Object(ObjectType { properties, .. }) => {
                 let map = properties
                     .into_iter()
-                    .map(|(s, ref_or_schema)| {
-                        (s, parse_schema(components.clone(), ref_or_schema.unbox()))
-                    })
+                    .map(|(s, ref_or_schema)| (s, parse_schema(&components, ref_or_schema.unbox())))
                     .collect::<serde_json::Map<String, serde_json::Value>>();
 
                 // >>>{"category":"{\"id\":\"integer\",\"name\":\"string\"}","id":"integer","name":"string","photoUrls":"[string]","status":"string","tags":"[{\"id\":\"integer\",\"name\":\"string\"}]"}
@@ -261,7 +248,6 @@ mod tests {
 
         let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
         let openapi = humbler.get_openapi().await.unwrap();
-        let components = openapi.components.clone().unwrap();
 
         let content = {
             let mut content = IndexMap::new();
@@ -299,7 +285,7 @@ mod tests {
 
             content
         };
-        let actual = content_to_value(content, components);
+        let actual = content_to_value(content, &openapi.components.unwrap());
         let expected = r#"[{"email":"string","firstName":"string","id":"integer","lastName":"string","password":"string","phone":"string","userStatus":"integer","username":"string"}]"#;
         assert_eq!(actual.unwrap().to_string(), expected);
     }
