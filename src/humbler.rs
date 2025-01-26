@@ -5,14 +5,14 @@ use openapiv3::{
     Schema, SchemaKind,
 };
 use reqwest::Error;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::{collections::HashMap, env, hash::RandomState};
 
 #[derive(Debug)]
 struct ApiInfo {
     path: String,
     method: String,
-    parameters: HashMap<String, String>,
+    parameters: Vec<(String, Value)>,
     request_body: Option<String>,
     response: Option<String>,
     swagger_url: String,
@@ -64,7 +64,7 @@ impl Humbler {
                                         let name = parameter_data.name;
                                         let schema_type = match parameter_data.format {
                                             openapiv3::ParameterSchemaOrContent::Schema(schema) => {
-                                                parse_schema(components, schema).to_string()
+                                                parse_schema(components, schema)
                                             }
                                             openapiv3::ParameterSchemaOrContent::Content(_) => {
                                                 todo!()
@@ -80,7 +80,7 @@ impl Humbler {
                                     }
                                 }
                             })
-                            .collect::<HashMap<String, String>>();
+                            .collect::<Vec<(String, Value)>>();
                         let request_body = operation.request_body.and_then(|request_body| {
                             let content = request_body.into_item().unwrap().content;
 
@@ -181,7 +181,7 @@ fn parse_schema(components: &Components, ref_or_schema: ReferenceOr<Schema>) -> 
                 let map = properties
                     .into_iter()
                     .map(|(s, ref_or_schema)| (s, parse_schema(&components, ref_or_schema.unbox())))
-                    .collect::<serde_json::Map<String, serde_json::Value>>();
+                    .collect::<Map<String, Value>>();
 
                 // >>>{"category":"{\"id\":\"integer\",\"name\":\"string\"}","id":"integer","name":"string","photoUrls":"[string]","status":"string","tags":"[{\"id\":\"integer\",\"name\":\"string\"}]"}
                 serde_json::Value::Object(map)
@@ -203,7 +203,7 @@ fn render_markdown_table(api_infos: Vec<ApiInfo>) -> String {
         let mut parameters = api_info
             .parameters
             .into_iter()
-            .map(|(name, schema_type)| format!("{}: {}", name, schema_type))
+            .map(|(name, schema_type)| format!(r#""{}": {}"#, name, schema_type))
             .collect::<Vec<String>>();
 
         parameters.sort();
