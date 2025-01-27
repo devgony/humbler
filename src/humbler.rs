@@ -64,7 +64,7 @@ impl Humbler {
                                         let name = parameter_data.name;
                                         let schema_type = match parameter_data.format {
                                             openapiv3::ParameterSchemaOrContent::Schema(schema) => {
-                                                parse_schema(components, schema)
+                                                Parser::new().parse_schema(components, schema)
                                             }
                                             openapiv3::ParameterSchemaOrContent::Content(_) => {
                                                 todo!()
@@ -122,7 +122,7 @@ impl Humbler {
     async fn get_openapi(&self) -> Result<OpenAPI, anyhow::Error> {
         let json_str = match self.openapi_json_url.starts_with("http") {
             true => self.json_from_url().await?,
-            false => json_from_file()?,
+            false => json_from_file(&self.openapi_json_url)?,
         };
         let openapi: OpenAPI =
             serde_json::from_str(&json_str).expect("Could not deserialize input");
@@ -144,53 +144,80 @@ fn content_to_value(
     content.into_iter().next().map(|(_, media_type)| {
         let ref_or_schema = media_type.schema.unwrap();
 
-        parse_schema(&components, ref_or_schema).to_string()
+        Parser::new()
+            .parse_schema(&components, ref_or_schema)
+            .to_string()
     })
 }
 
-fn parse_schema(components: &Components, ref_or_schema: ReferenceOr<Schema>) -> Value {
-    let schema = match ref_or_schema {
-        ReferenceOr::Reference { reference } => {
-            let key = reference.split("/").last().unwrap();
-            components
-                .schemas
-                .iter()
-                .find(|(k, _)| k == &key)
-                .unwrap()
-                .1
-                .clone()
-                .into_item()
-                .unwrap()
-        }
-        ReferenceOr::Item(schema) => schema,
-    };
+struct Parser {
+    stack: Vec<String>,
+}
 
-    let result = match schema.schema_kind {
-        SchemaKind::Type(_type) => match _type {
-            openapiv3::Type::String(_) => json!("string"),
-            openapiv3::Type::Number(_) => json!("number"),
-            openapiv3::Type::Integer(_) => json!("integer"),
-            openapiv3::Type::Boolean(_) => json!("boolean"),
-            openapiv3::Type::Array(ArrayType { items, .. }) => {
-                let items = items.unwrap();
-                let schema_type = parse_schema(&components, items.unbox());
+impl Parser {
+    fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
 
-                json!([schema_type])
+    fn parse_schema(
+        &mut self,
+        components: &Components,
+        ref_or_schema: ReferenceOr<Schema>,
+    ) -> Value {
+        let schema = match ref_or_schema {
+            ReferenceOr::Reference { reference } => {
+                let key = reference.split("/").last().unwrap();
+
+                if self.stack.contains(&key.to_string()) {
+                    return json!(key);
+                }
+
+                let schema = components
+                    .schemas
+                    .iter()
+                    .find(|(k, _)| k == &key)
+                    .unwrap()
+                    .1
+                    .clone()
+                    .into_item()
+                    .unwrap();
+
+                self.stack.push(key.to_string());
+
+                schema
             }
-            openapiv3::Type::Object(ObjectType { properties, .. }) => {
-                let map = properties
-                    .into_iter()
-                    .map(|(s, ref_or_schema)| (s, parse_schema(&components, ref_or_schema.unbox())))
-                    .collect::<Map<String, Value>>();
+            ReferenceOr::Item(schema) => schema,
+        };
 
-                // >>>{"category":"{\"id\":\"integer\",\"name\":\"string\"}","id":"integer","name":"string","photoUrls":"[string]","status":"string","tags":"[{\"id\":\"integer\",\"name\":\"string\"}]"}
-                serde_json::Value::Object(map)
-            }
-        },
-        _ => todo!(),
-    };
+        let result = match schema.schema_kind {
+            SchemaKind::Type(_type) => match _type {
+                openapiv3::Type::String(_) => json!("string"),
+                openapiv3::Type::Number(_) => json!("number"),
+                openapiv3::Type::Integer(_) => json!("integer"),
+                openapiv3::Type::Boolean(_) => json!("boolean"),
+                openapiv3::Type::Array(ArrayType { items, .. }) => {
+                    let items = items.unwrap();
+                    let schema_type = self.parse_schema(&components, items.unbox());
 
-    result
+                    json!([schema_type])
+                }
+                openapiv3::Type::Object(ObjectType { properties, .. }) => {
+                    let map = properties
+                        .into_iter()
+                        .map(|(s, ref_or_schema)| {
+                            (s, self.parse_schema(&components, ref_or_schema.unbox()))
+                        })
+                        .collect::<Map<String, Value>>();
+
+                    // >>>{"category":"{\"id\":\"integer\",\"name\":\"string\"}","id":"integer","name":"string","photoUrls":"[string]","status":"string","tags":"[{\"id\":\"integer\",\"name\":\"string\"}]"}
+                    serde_json::Value::Object(map)
+                }
+            },
+            _ => todo!(),
+        };
+
+        result
+    }
 }
 
 fn render_markdown_table(api_infos: Vec<ApiInfo>) -> String {
@@ -226,9 +253,9 @@ fn render_markdown_table(api_infos: Vec<ApiInfo>) -> String {
     markdown
 }
 
-fn json_from_file() -> Result<String> {
+fn json_from_file(path: &str) -> Result<String> {
     // let file = std::fs::File::open("data/api-docs.json")?;
-    let file = std::fs::File::open("data/pet.json")?;
+    let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     let json: Value = serde_json::from_reader(reader)?;
 
@@ -236,15 +263,17 @@ fn json_from_file() -> Result<String> {
 }
 
 mod tests {
+    use std::path::Components;
+
     use super::*;
-    use dotenv::dotenv;
+    use dotenv::{dotenv, from_filename};
     use openapiv3::{ArrayType, Schema, SchemaData, SchemaKind, StringType, Type};
 
     #[tokio::test]
     async fn content_to_value_test() {
-        dotenv().ok();
+        from_filename(".env.test").ok();
         let swagger_ui_url = &env::var("SWAGGER_UI_URL").expect("SWAGGER_UI_URL must be set");
-        let openapi_json_url = &env::var("OPENAPI_JSON_URL").expect("OPENAPI_JSON_URL must be set");
+        let openapi_json_url = "data/pet.json";
 
         let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
         let openapi = humbler.get_openapi().await.unwrap();
@@ -288,5 +317,23 @@ mod tests {
         let actual = content_to_value(content, &openapi.components.unwrap());
         let expected = r#"[{"email":"string","firstName":"string","id":"integer","lastName":"string","password":"string","phone":"string","userStatus":"integer","username":"string"}]"#;
         assert_eq!(actual.unwrap().to_string(), expected);
+    }
+
+    #[tokio::test]
+    async fn parse_recursive_schema() {
+        from_filename(".env.test").ok();
+        let swagger_ui_url = &env::var("SWAGGER_UI_URL").expect("SWAGGER_UI_URL must be set");
+        let openapi_json_url = "data/pet.json";
+
+        let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
+        let openapi = humbler.get_openapi().await.unwrap();
+        let components = openapi.components.as_ref().unwrap();
+        println!("{:#?}", components);
+        let ref_or_schema = components.schemas.get("RecursivePet").unwrap().to_owned();
+
+        let actual = Parser::new().parse_schema(components, ref_or_schema);
+        let expected =
+            json!({"id":"integer","recursivePet":{"id":"integer","recursivePet":"RecursivePet"}});
+        assert_eq!(actual, expected);
     }
 }
