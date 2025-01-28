@@ -1076,26 +1076,16 @@
             "type": "string",
             "description": "pet status in the store",
             "enum": ["available", "pending", "sold"]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pet"
+            }
           }
         },
         "xml": {
           "name": "pet"
-        }
-      },
-      "RecursivePet": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64",
-            "example": 10
-          },
-          "recursivePet": {
-            "$ref": "#/components/schemas/RecursivePet"
-          }
-        },
-        "xml": {
-          "name": "recursivePet"
         }
       },
       "ApiResponse": {

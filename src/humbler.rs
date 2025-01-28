@@ -140,7 +140,6 @@ fn content_to_value(
     content: IndexMap<String, MediaType, RandomState>,
     components: &Components,
 ) -> Option<String> {
-    println!("media_type: {:#?}", content);
     content.into_iter().next().map(|(_, media_type)| {
         let ref_or_schema = media_type.schema.unwrap();
 
@@ -209,7 +208,6 @@ impl Parser {
                         })
                         .collect::<Map<String, Value>>();
 
-                    // >>>{"category":"{\"id\":\"integer\",\"name\":\"string\"}","id":"integer","name":"string","photoUrls":"[string]","status":"string","tags":"[{\"id\":\"integer\",\"name\":\"string\"}]"}
                     serde_json::Value::Object(map)
                 }
             },
@@ -326,14 +324,14 @@ mod tests {
         let openapi_json_url = "data/pet.json";
 
         let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
-        let openapi = humbler.get_openapi().await.unwrap();
-        let components = openapi.components.as_ref().unwrap();
-        println!("{:#?}", components);
-        let ref_or_schema = components.schemas.get("RecursivePet").unwrap().to_owned();
+        let api_infos = humbler.get_api_infos().await.unwrap();
+        let post_pet = api_infos
+            .into_iter()
+            .find(|api_info| api_info.path == "/pet" && api_info.method == "post")
+            .unwrap();
 
-        let actual = Parser::new().parse_schema(components, ref_or_schema);
-        let expected =
-            json!({"id":"integer","recursivePet":{"id":"integer","recursivePet":"RecursivePet"}});
+        let actual = post_pet.request_body.unwrap();
+        let expected = r#"{"category":{"id":"integer","name":"string"},"children":["Pet"],"id":"integer","name":"string","photoUrls":["string"],"status":"string","tags":[{"id":"integer","name":"string"}]}"#;
         assert_eq!(actual, expected);
     }
 }
