@@ -8,6 +8,8 @@ use reqwest::Error;
 use serde_json::{json, Map, Value};
 use std::{collections::HashMap, env, hash::RandomState};
 
+use crate::utils::option::OptionExt;
+
 #[derive(Debug)]
 struct ApiInfo {
     path: String,
@@ -40,24 +42,34 @@ impl Humbler {
     async fn get_api_infos(&self) -> Result<Vec<ApiInfo>, anyhow::Error> {
         let openapi = self.get_openapi().await?;
         let api_infos = openapi
-            .clone()
             .paths
             .into_iter()
             .filter(|(path, reference_or_path_item)| reference_or_path_item.as_item().is_some())
-            .flat_map(|(path, reference_or_path_item)| {
-                let path_item = reference_or_path_item.into_item().unwrap();
+            .map(|(path, reference_or_path_item)| {
+                let path_item = reference_or_path_item
+                    .into_item()
+                    .to_result("PathItem not found")?;
 
-                path_item.into_iter().map({
-                    let components = openapi.components.as_ref().unwrap();
+                Ok(path_item.into_iter().map({
+                    let components = openapi
+                        .components
+                        .as_ref()
+                        .to_result("Components not found")?;
+
                     move |(method, operation)| {
-                        let operation_id = operation.operation_id.unwrap();
-                        let tag = operation.tags.into_iter().next().unwrap();
+                        let operation_id =
+                            operation.operation_id.to_result("OperationId not found")?;
+                        let tag = operation
+                            .tags
+                            .into_iter()
+                            .next()
+                            .to_result("Tag not found")?;
                         let swagger_url = format!("{}/{tag}/{operation_id}", self.swagger_ui_url);
                         let parameters = operation
                             .parameters
                             .into_iter()
                             .filter_map(|param| {
-                                let param = param.into_item().unwrap();
+                                let param = param.into_item()?;
                                 match param {
                                     Parameter::Query { parameter_data, .. }
                                     | Parameter::Path { parameter_data, .. } => {
@@ -81,42 +93,45 @@ impl Humbler {
                                 }
                             })
                             .collect::<Vec<(String, Value)>>();
-                        let request_body = operation.request_body.and_then(|request_body| {
-                            let content = request_body.into_item().unwrap().content;
+                        let request_body = operation
+                            .request_body
+                            .and_then(|request_body| {
+                                let content = request_body.into_item()?.content;
 
-                            content_to_value(content, components)
-                        });
+                                content_to_value(content, components)
+                            })
+                            .transpose()?;
 
-                        let Responses {
-                            default,
-                            responses,
-                            extensions,
-                        } = operation.responses;
+                        let Responses { responses, .. } = operation.responses;
 
                         let response = responses
                             .into_iter()
-                            .map(|(status_code, response)| {
-                                let content = response.into_item().unwrap().content;
+                            .map(|(_, response)| {
+                                let content = response.into_item()?.content;
 
                                 content_to_value(content, components)
                             })
                             .next()
-                            .flatten();
+                            .flatten()
+                            .transpose()?;
 
-                        ApiInfo {
+                        Ok(ApiInfo {
                             path: path.clone(),
                             method: method.to_string(),
                             parameters,
                             request_body,
                             response, // if response has only Description:OK, then it is None for now
                             swagger_url,
-                        }
-                        // let request_body = operation.request_body.unwrap().into_item().unwrap().content;
+                        })
                     }
-                })
+                }))
             })
-            .collect::<Vec<ApiInfo>>();
-        Ok(api_infos)
+            .collect::<Result<Vec<_>>>()? // TODO: decrease collecting to once
+            .into_iter()
+            .flatten()
+            .collect::<Result<Vec<ApiInfo>>>();
+
+        api_infos
     }
 
     async fn get_openapi(&self) -> Result<OpenAPI, anyhow::Error> {
@@ -139,13 +154,13 @@ impl Humbler {
 fn content_to_value(
     content: IndexMap<String, MediaType, RandomState>,
     components: &Components,
-) -> Option<String> {
+) -> Option<Result<String>> {
     content.into_iter().next().map(|(_, media_type)| {
-        let ref_or_schema = media_type.schema.unwrap();
+        let ref_or_schema = media_type.schema.to_result("Schema not found")?;
 
-        Parser::new()
+        Ok(Parser::new()
             .parse_schema(&components, ref_or_schema)
-            .to_string()
+            .to_string())
     })
 }
 
@@ -177,7 +192,7 @@ impl Parser {
                     .find(|(k, _)| k == &key)
                     .unwrap()
                     .1
-                    .clone()
+                    .to_owned()
                     .into_item()
                     .unwrap();
 
@@ -312,9 +327,12 @@ mod tests {
 
             content
         };
-        let actual = content_to_value(content, &openapi.components.unwrap());
+        let actual = content_to_value(content, &openapi.components.unwrap())
+            .unwrap()
+            .unwrap()
+            .to_string();
         let expected = r#"[{"email":"string","firstName":"string","id":"integer","lastName":"string","password":"string","phone":"string","userStatus":"integer","username":"string"}]"#;
-        assert_eq!(actual.unwrap().to_string(), expected);
+        assert_eq!(actual, expected);
     }
 
     #[tokio::test]
