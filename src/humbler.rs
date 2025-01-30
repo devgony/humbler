@@ -83,7 +83,7 @@ impl Humbler {
                                             }
                                         };
 
-                                        Some((name, schema_type.to_owned()))
+                                        Some(schema_type.map(|schema_type| (name, schema_type)))
                                     }
                                     // skip header parameters for now, no todo
                                     Parameter::Header { .. } => None,
@@ -92,7 +92,7 @@ impl Humbler {
                                     }
                                 }
                             })
-                            .collect::<Vec<(String, Value)>>();
+                            .collect::<Result<Vec<(String, Value)>>>()?;
                         let request_body = operation
                             .request_body
                             .and_then(|request_body| {
@@ -158,9 +158,9 @@ fn content_to_value(
     content.into_iter().next().map(|(_, media_type)| {
         let ref_or_schema = media_type.schema.to_result("Schema not found")?;
 
-        Ok(Parser::new()
+        Parser::new()
             .parse_schema(&components, ref_or_schema)
-            .to_string())
+            .map(|v| v.to_string())
     })
 }
 
@@ -177,24 +177,27 @@ impl Parser {
         &mut self,
         components: &Components,
         ref_or_schema: ReferenceOr<Schema>,
-    ) -> Value {
+    ) -> Result<Value> {
         let schema = match ref_or_schema {
             ReferenceOr::Reference { reference } => {
-                let key = reference.split("/").last().unwrap();
+                let key = reference
+                    .split("/")
+                    .last()
+                    .to_result(format!("Key not found in: {reference}"))?;
 
                 if self.stack.contains(&key.to_string()) {
-                    return json!(key);
+                    return Ok(json!(key));
                 }
 
                 let schema = components
                     .schemas
                     .iter()
                     .find(|(k, _)| k == &key)
-                    .unwrap()
+                    .to_result(format!("key: {key} not found in components"))?
                     .1
                     .to_owned()
                     .into_item()
-                    .unwrap();
+                    .to_result(format!("key: {key} is not a schema item"))?;
 
                 self.stack.push(key.to_string());
 
@@ -210,8 +213,8 @@ impl Parser {
                 openapiv3::Type::Integer(_) => json!("integer"),
                 openapiv3::Type::Boolean(_) => json!("boolean"),
                 openapiv3::Type::Array(ArrayType { items, .. }) => {
-                    let items = items.unwrap();
-                    let schema_type = self.parse_schema(&components, items.unbox());
+                    let items = items.to_result("Items not found")?;
+                    let schema_type = self.parse_schema(&components, items.unbox())?;
 
                     json!([schema_type])
                 }
@@ -219,9 +222,10 @@ impl Parser {
                     let map = properties
                         .into_iter()
                         .map(|(s, ref_or_schema)| {
-                            (s, self.parse_schema(&components, ref_or_schema.unbox()))
+                            self.parse_schema(&components, ref_or_schema.unbox())
+                                .map(|v| (s, v))
                         })
-                        .collect::<Map<String, Value>>();
+                        .collect::<Result<Map<String, Value>>>()?;
 
                     serde_json::Value::Object(map)
                 }
@@ -229,7 +233,7 @@ impl Parser {
             _ => todo!(),
         };
 
-        result
+        Ok(result)
     }
 }
 
