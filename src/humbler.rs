@@ -1,3 +1,5 @@
+use crate::config::load_config;
+use crate::utils::option::OptionExt;
 use anyhow::Result;
 use indexmap::IndexMap;
 use openapiv3::{
@@ -6,9 +8,7 @@ use openapiv3::{
 };
 use reqwest::Error;
 use serde_json::{json, Map, Value};
-use std::{collections::HashMap, env, hash::RandomState};
-
-use crate::utils::option::OptionExt;
+use std::hash::RandomState;
 
 #[derive(Debug)]
 struct ApiInfo {
@@ -23,6 +23,7 @@ struct ApiInfo {
 pub struct Humbler {
     swagger_ui_url: String,
     openapi_json_url: String,
+    filter_keywords: Vec<String>,
 }
 
 impl Humbler {
@@ -30,7 +31,15 @@ impl Humbler {
         Self {
             swagger_ui_url,
             openapi_json_url,
+            filter_keywords: Vec::new(),
         }
+    }
+
+    pub fn filter_on(mut self) -> Result<Self> {
+        let config = load_config(".humbler.toml")?;
+        self.filter_keywords = config.filter_keywords;
+
+        Ok(self)
     }
 
     pub async fn run(&self) -> Result<String> {
@@ -44,7 +53,12 @@ impl Humbler {
         let api_infos = openapi
             .paths
             .into_iter()
-            .filter(|(path, reference_or_path_item)| reference_or_path_item.as_item().is_some())
+            .filter(|(path, _)| {
+                self.filter_keywords
+                    .iter()
+                    .all(|keyword| path.contains(keyword))
+            })
+            .filter(|(_, reference_or_path_item)| reference_or_path_item.as_item().is_some())
             .map(|(path, reference_or_path_item)| {
                 let path_item = reference_or_path_item
                     .into_item()
@@ -280,7 +294,7 @@ fn json_from_file(path: &str) -> Result<String> {
 }
 
 mod tests {
-    use std::path::Components;
+    use std::{env, path::Components};
 
     use super::*;
     use dotenv::{dotenv, from_filename};
