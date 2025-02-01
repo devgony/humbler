@@ -11,7 +11,5 @@ async fn main() -> Result<()> {
 
     let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
 
-    humbler.run().await;
-
-    Ok(())
+    humbler.run().await.map(|_| ())
 }

@@ -50,7 +50,7 @@ impl Humbler {
 
     async fn get_api_infos(&self) -> Result<Vec<ApiInfo>, anyhow::Error> {
         let openapi = self.get_openapi().await?;
-        let api_infos = openapi
+        openapi
             .paths
             .into_iter()
             .filter(|(path, _)| {
@@ -101,7 +101,7 @@ impl Humbler {
                                     }
                                     // skip header parameters for now, no todo
                                     Parameter::Header { .. } => None,
-                                    x => {
+                                    _ => {
                                         todo!()
                                     }
                                 }
@@ -143,9 +143,7 @@ impl Humbler {
             .collect::<Result<Vec<_>>>()? // TODO: decrease collecting to once
             .into_iter()
             .flatten()
-            .collect::<Result<Vec<ApiInfo>>>();
-
-        api_infos
+            .collect::<Result<Vec<ApiInfo>>>()
     }
 
     async fn get_openapi(&self) -> Result<OpenAPI, anyhow::Error> {
@@ -173,7 +171,7 @@ fn content_to_value(
         let ref_or_schema = media_type.schema.to_result("Schema not found")?;
 
         Parser::new()
-            .parse_schema(&components, ref_or_schema)
+            .parse_schema(components, ref_or_schema)
             .map(|v| v.to_string())
     })
 }
@@ -195,7 +193,7 @@ impl Parser {
         let schema = match ref_or_schema {
             ReferenceOr::Reference { reference } => {
                 let key = reference
-                    .split("/")
+                    .split('/')
                     .last()
                     .to_result(format!("Key not found in: {reference}"))?;
 
@@ -228,7 +226,7 @@ impl Parser {
                 openapiv3::Type::Boolean(_) => json!("boolean"),
                 openapiv3::Type::Array(ArrayType { items, .. }) => {
                     let items = items.to_result("Items not found")?;
-                    let schema_type = self.parse_schema(&components, items.unbox())?;
+                    let schema_type = self.parse_schema(components, items.unbox())?;
 
                     json!([schema_type])
                 }
@@ -236,7 +234,7 @@ impl Parser {
                     let map = properties
                         .into_iter()
                         .map(|(s, ref_or_schema)| {
-                            self.parse_schema(&components, ref_or_schema.unbox())
+                            self.parse_schema(components, ref_or_schema.unbox())
                                 .map(|v| (s, v))
                         })
                         .collect::<Result<Map<String, Value>>>()?;
@@ -293,12 +291,12 @@ fn json_from_file(path: &str) -> Result<String> {
     Ok(json.to_string())
 }
 
+#[cfg(test)]
 mod tests {
-    use std::{env, path::Components};
-
     use super::*;
-    use dotenv::{dotenv, from_filename};
-    use openapiv3::{ArrayType, Schema, SchemaData, SchemaKind, StringType, Type};
+    use dotenv::from_filename;
+    use openapiv3::{ArrayType, Schema, SchemaData, SchemaKind, Type};
+    use std::env;
 
     #[tokio::test]
     async fn content_to_value_test() {
