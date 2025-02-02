@@ -1,5 +1,1 @@
-/target
 .DS_Store
-data/api-docs.json
-.env
-.env.prod
