@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["core", "web"]
+default-members = ["core", "web"]
+
+[workspace.package]
+# version = "0.16.3"
+# edition = "2021"
+# license = "Apache-2.0"
+
+[workspace.dependencies]
+humbler-core = { path = "./core" }
+humbler-web = { path = "./web" }

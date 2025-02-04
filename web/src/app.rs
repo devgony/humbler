@@ -1,3 +1,7 @@
+// use std::env;
+//
+// use dotenv::from_filename;
+// use humbler_core::humbler::Humbler;
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
@@ -31,7 +35,7 @@ pub fn App() -> impl IntoView {
     view! {
         // injects a stylesheet into the document <head>
         // id=leptos means cargo-leptos will hot-reload this stylesheet
-        <Stylesheet id="leptos" href="/pkg/web.css"/>
+        <Stylesheet id="leptos" href="/pkg/humbler-web.css"/>
 
         // sets the document title
         <Title text="Welcome to Leptos"/>
@@ -46,6 +50,15 @@ pub fn App() -> impl IntoView {
         </Router>
     }
 }
+
+// async fn run_humbler() -> String {
+//     from_filename("../core/.env.test").ok();
+//     let swagger_ui_url = &env::var("SWAGGER_UI_URL").expect("SWAGGER_UI_URL must be set");
+//     let openapi_json_url = &env::var("OPENAPI_JSON_URL").expect("OPENAPI_JSON_URL must be set");
+//     let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
+//
+//     humbler.run().await.unwrap()
+// }
 
 /// Renders the home page of your application.
 #[component]

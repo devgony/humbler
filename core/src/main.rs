@@ -1,6 +1,6 @@
 use anyhow::Result;
 use dotenv::dotenv;
-use humbler::humbler::Humbler;
+use humbler_core::humbler::Humbler;
 use std::env;
 
 #[tokio::main]

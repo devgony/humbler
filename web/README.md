@@ -23,7 +23,7 @@ cargo leptos new --git https://github.com/leptos-rs/start-axum-0.7
 to generate a new project template.
 
 ```bash
-cd web
+cd humbler-web
 ```
 
 to go to your newly created project.  
@@ -73,12 +73,12 @@ After running a `cargo leptos build --release` the minimum files needed are:
 
 Copy these files to your remote server. The directory structure should be:
 ```text
-web
+humbler-web
 site/
 ```
 Set the following environment variables (updating for your project as needed):
 ```sh
-export LEPTOS_OUTPUT_NAME="web"
+export LEPTOS_OUTPUT_NAME="humbler-web"
 export LEPTOS_SITE_ROOT="site"
 export LEPTOS_SITE_PKG_DIR="pkg"
 export LEPTOS_SITE_ADDR="127.0.0.1:3000"
