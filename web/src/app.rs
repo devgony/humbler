@@ -1,8 +1,8 @@
-// use std::env;
-//
-// use dotenv::from_filename;
-// use humbler_core::humbler::Humbler;
-use leptos::prelude::*;
+use std::env;
+
+use dotenv::from_filename;
+use humbler_core::{humbler::Humbler, utils::openapi};
+use leptos::{prelude::*, task::spawn_local};
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
@@ -51,14 +51,30 @@ pub fn App() -> impl IntoView {
     }
 }
 
-// async fn run_humbler() -> String {
-//     from_filename("../core/.env.test").ok();
-//     let swagger_ui_url = &env::var("SWAGGER_UI_URL").expect("SWAGGER_UI_URL must be set");
-//     let openapi_json_url = &env::var("OPENAPI_JSON_URL").expect("OPENAPI_JSON_URL must be set");
-//     let humbler = Humbler::new(swagger_ui_url.to_string(), openapi_json_url.to_string());
-//
-//     humbler.run().await.unwrap()
-// }
+#[server]
+async fn run_humbler_handler() -> Result<String, ServerFnError> {
+    // dotenv::from_filename("../core/.env.test").ok();
+    // let swagger_ui_url = std::env::var("SWAGGER_UI_URL").unwrap();
+    // let openapi_json_url = std::env::var("OPENAPI_JSON_URL").unwrap();
+    let current_dir = std::env::current_dir().expect("Failed to get current directory");
+    println!("Current directory: {:?}", current_dir);
+    let swagger_ui_url = "http://localhost:4000/swagger-ui/index.html".to_owned();
+    let openapi_json_url = "core/data/pet.json".to_owned();
+
+    let humbler = Humbler::new(swagger_ui_url, openapi_json_url);
+
+    println!("executing humbler");
+    match humbler.run().await {
+        Ok(s) => {
+            println!("Humbler result: {}", s);
+            Ok(s)
+        }
+        Err(e) => {
+            println!("Humbler error: {}", e);
+            Err(ServerFnError::new(format!("Error: {e}")))
+        }
+    }
+}
 
 /// Renders the home page of your application.
 #[component]
@@ -66,9 +82,15 @@ fn HomePage() -> impl IntoView {
     // Creates a reactive value to update the button
     let count = RwSignal::new(0);
     let on_click = move |_| *count.write() += 1;
+    let data = OnceResource::new(run_humbler_handler())
+        .get()
+        .transpose()
+        .unwrap_or_default()
+        .unwrap_or_default();
 
     view! {
         <h1>"Welcome to Leptos!"</h1>
         <button on:click=on_click>"Click Me: " {count}</button>
+        <p>{data}</p>
     }
 }
