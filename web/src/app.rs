@@ -82,15 +82,13 @@ fn HomePage() -> impl IntoView {
     // Creates a reactive value to update the button
     let count = RwSignal::new(0);
     let on_click = move |_| *count.write() += 1;
-    let data = OnceResource::new(run_humbler_handler())
-        .get()
-        .transpose()
-        .unwrap_or_default()
-        .unwrap_or_default();
+    let async_data = Resource::new(move || {}, |_| run_humbler_handler());
 
     view! {
         <h1>"Welcome to Leptos!"</h1>
         <button on:click=on_click>"Click Me: " {count}</button>
-        <p>{data}</p>
+        <Suspense fallback=move || view!{ <p>"Loading..."</p> }>
+        {move || async_data.get().map(|data| view! {<p>{data}</p>})}
+        </Suspense>
     }
 }
