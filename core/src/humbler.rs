@@ -7,23 +7,26 @@ use openapiv3::{
     Schema, SchemaKind,
 };
 use reqwest::Error;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::hash::RandomState;
 
-#[derive(Debug)]
-struct ApiInfo {
-    path: String,
-    method: String,
-    parameters: Vec<(String, Value)>,
-    request_body: Option<String>,
-    response: Option<String>,
-    swagger_url: String,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ApiInfo {
+    pub path: String,
+    pub method: String,
+    pub parameters: Vec<(String, Value)>,
+    pub request_body: Option<String>,
+    pub response: Option<String>,
+    pub swagger_url: String,
 }
 
+#[derive(Debug)]
 pub struct Humbler {
     swagger_ui_url: String,
     openapi_json_url: String,
     filter_keywords: Vec<String>,
+    pub api_infos: Vec<ApiInfo>,
 }
 
 impl Humbler {
@@ -32,20 +35,33 @@ impl Humbler {
             swagger_ui_url,
             openapi_json_url,
             filter_keywords: Vec::new(),
+            api_infos: Vec::new(),
         }
     }
 
-    pub fn filter_on(mut self) -> Result<Self> {
+    pub async fn filter_on(&self) -> Result<Self> {
         let config = load_config(".humbler.toml")?;
-        self.filter_keywords = config.filter_keywords;
+        let humbler = Self {
+            swagger_ui_url: self.swagger_ui_url.clone(),
+            openapi_json_url: self.openapi_json_url.clone(),
+            filter_keywords: config.filter_keywords,
+            api_infos: Vec::new(),
+        };
 
-        Ok(self)
+        humbler.run().await
     }
 
-    pub async fn run(&self) -> Result<String> {
-        let api_infos = self.get_api_infos().await?;
-
-        Ok(render_markdown_table(api_infos))
+    pub async fn run(self) -> Result<Self> {
+        // self.api_infos = self.get_api_infos().await?;
+        // S
+        //
+        // Ok(self)
+        Ok(Self {
+            swagger_ui_url: self.swagger_ui_url.clone(),
+            openapi_json_url: self.openapi_json_url.clone(),
+            filter_keywords: self.filter_keywords.clone(),
+            api_infos: self.get_api_infos().await?,
+        })
     }
 
     async fn get_api_infos(&self) -> Result<Vec<ApiInfo>, anyhow::Error> {
@@ -161,6 +177,43 @@ impl Humbler {
 
         response.text().await
     }
+
+    pub fn render_markdown_table(&self) -> String {
+        let mut markdown = String::new();
+        markdown
+            .push_str("| Path | Method | Parameters | Request Body | Response | Swagger URL |\n");
+        markdown
+            .push_str("| ---- | ------ | ---------- | ------------ | -------- | ----------- |\n");
+        for api_info in &self.api_infos {
+            let path = &api_info.path;
+            let method = &api_info.method;
+            let mut parameters =
+                <Vec<(String, Value)> as AsRef<Vec<(String, Value)>>>::as_ref(&api_info.parameters)
+                    .iter()
+                    .map(|(name, schema_type)| format!(r#""{}": {}"#, name, schema_type))
+                    .collect::<Vec<String>>();
+
+            parameters.sort();
+
+            let parameters = parameters.join(", ");
+            let request_body = api_info
+                .request_body
+                .as_ref()
+                .map(|request_body| request_body.to_string())
+                .unwrap_or_default();
+            let response = api_info
+                .response
+                .as_ref()
+                .map(|response| response.to_string())
+                .unwrap_or_default();
+            let swagger_url = &api_info.swagger_url;
+            markdown.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} |\n",
+                path, method, parameters, request_body, response, swagger_url
+            ));
+        }
+        markdown
+    }
 }
 
 fn content_to_value(
@@ -247,39 +300,6 @@ impl Parser {
 
         Ok(result)
     }
-}
-
-fn render_markdown_table(api_infos: Vec<ApiInfo>) -> String {
-    let mut markdown = String::new();
-    markdown.push_str("| Path | Method | Parameters | Request Body | Response | Swagger URL |\n");
-    markdown.push_str("| ---- | ------ | ---------- | ------------ | -------- | ----------- |\n");
-    for api_info in api_infos {
-        let path = api_info.path;
-        let method = api_info.method;
-        let mut parameters = api_info
-            .parameters
-            .into_iter()
-            .map(|(name, schema_type)| format!(r#""{}": {}"#, name, schema_type))
-            .collect::<Vec<String>>();
-
-        parameters.sort();
-
-        let parameters = parameters.join(", ");
-        let request_body = api_info
-            .request_body
-            .map(|request_body| request_body.to_string())
-            .unwrap_or_default();
-        let response = api_info
-            .response
-            .map(|response| response.to_string())
-            .unwrap_or_default();
-        let swagger_url = api_info.swagger_url;
-        markdown.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} |\n",
-            path, method, parameters, request_body, response, swagger_url
-        ));
-    }
-    markdown
 }
 
 fn json_from_file(path: &str) -> Result<String> {
