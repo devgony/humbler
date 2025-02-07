@@ -1,11 +1,7 @@
 use std::env;
 
-use dotenv::from_filename;
-use humbler_core::{
-    humbler::{ApiInfo, Humbler},
-    utils::openapi,
-};
-use leptos::{prelude::*, task::spawn_local};
+use humbler_core::humbler::{ApiInfo, Humbler};
+use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
@@ -56,9 +52,6 @@ pub fn App() -> impl IntoView {
 
 #[server]
 async fn run_humbler_handler() -> Result<Vec<ApiInfo>, ServerFnError> {
-    // dotenv::from_filename("../core/.env.test").ok();
-    // let swagger_ui_url = std::env::var("SWAGGER_UI_URL").unwrap();
-    // let openapi_json_url = std::env::var("OPENAPI_JSON_URL").unwrap();
     let current_dir = std::env::current_dir().expect("Failed to get current directory");
     let swagger_ui_url = "http://localhost:4000/swagger-ui/index.html".to_owned();
     let openapi_json_url = "core/data/pet.json".to_owned();
@@ -87,17 +80,13 @@ static HEADERS: [&str; 6] = [
 /// Renders the home page of your application.
 #[component]
 fn HomePage() -> impl IntoView {
-    // Creates a reactive value to update the button
-    // let count = RwSignal::new(0);
-    // let on_click = move |_| *count.write() += 1;
     let async_data = Resource::new(move || {}, |_| run_humbler_handler());
 
     view! {
-        <h1>"Welcome to Humbler!"</h1>
-        // <button on:click=on_click>"Click Me: " {count}</button>
+        <h1 class="text-red-300">"Welcome to Humbler!"</h1>
         <Suspense fallback=move || view!{ <p>"Loading..."</p> }>
         {move || async_data.get().map(|api_infos| view! {
-            <table>
+            <table class="bg-red-300 border border-gray-400">
                 {HEADERS.iter().map(|&header| view!{ <th>{header}</th> }).collect::<Vec<_>>()}
                 {api_infos.unwrap_or_default().into_iter().map(|api_info| view! {
                     <tr>

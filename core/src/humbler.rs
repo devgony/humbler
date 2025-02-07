@@ -52,10 +52,6 @@ impl Humbler {
     }
 
     pub async fn run(self) -> Result<Self> {
-        // self.api_infos = self.get_api_infos().await?;
-        // S
-        //
-        // Ok(self)
         Ok(Self {
             swagger_ui_url: self.swagger_ui_url.clone(),
             openapi_json_url: self.openapi_json_url.clone(),
