@@ -78,47 +78,31 @@ static HEADERS: [&str; 6] = [
 #[component]
 fn HomePage() -> impl IntoView {
     let async_data = Resource::new(move || {}, |_| run_humbler_handler());
-    let (value, set_value) = signal(0);
 
     view! {
         <main>
-            <div class="bg-gradient-to-tl from-blue-800 to-blue-500 text-white font-mono flex flex-col min-h-screen">
-                <div class="flex flex-row-reverse flex-wrap m-auto">
-                    <button on:click=move |_| set_value.update(|value| *value += 1) class="rounded px-3 py-2 m-1 border-b-4 border-l-2 shadow-lg bg-blue-700 border-blue-800 text-white">
-                        "+"
-                    </button>
-                    <button class="rounded px-3 py-2 m-1 border-b-4 border-l-2 shadow-lg bg-blue-800 border-blue-900 text-white">
-                        {value}
-                    </button>
-                    <button
-                        on:click=move |_| set_value.update(|value| *value -= 1)
-                        class="rounded px-3 py-2 m-1 border-b-4 border-l-2 shadow-lg bg-blue-700 border-blue-800 text-white"
-                        class:invisible=move || {value.get() < 1}
-                    >
-                        "-"
-                    </button>
-                </div>
-            </div>
-            <div class="bg-green-400">xxx</div>
-            <h2 class="p-6 text-4xl">"Welcome to Leptos with Tailwind"</h2>
             <h1 class="text-red-300">"Welcome to Humbler!"</h1>
-            // <Suspense fallback=move || view!{ <p>"Loading..."</p> }>
-            // {move || async_data.get().map(|api_infos| view! {
-            //     <table class="bg-red-300 border border-gray-400">
-            //         {HEADERS.iter().map(|&header| view!{ <th>{header}</th> }).collect::<Vec<_>>()}
-            //         {api_infos.unwrap_or_default().into_iter().map(|api_info| view! {
-            //         <tr>
-            //                 <td>{api_info.path}</td>
-            //                 <td>{api_info.method}</td>
-            //                 <td>{api_info.parameters.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join(", ")}</td>
-            //                 <td>{api_info.request_body}</td>
-            //                 <td>{api_info.response}</td>
-            //                 <td>{api_info.swagger_url}</td>
-            //         </tr>
-            //         }).collect::<Vec<_>>()}
-            //     </table>
-            // })}
-            // </Suspense>
+            <input placeholder="Search Path" />
+            <button>Search</button>
+            <div class="result">
+                <Suspense fallback=move || view!{ <p>"Loading..."</p> }>
+                    {move || async_data.get().map(|api_infos| view! {
+                        <table class="bg-red-300 border border-gray-400">
+                            {HEADERS.iter().map(|&header| view!{ <th>{header}</th> }).collect::<Vec<_>>()}
+                            {api_infos.unwrap_or_default().into_iter().map(|api_info| view! {
+                            <tr>
+                                    <td>{api_info.path}</td>
+                                    <td>{api_info.method}</td>
+                                    <td>{api_info.parameters.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join(", ")}</td>
+                                    <td>{api_info.request_body}</td>
+                                    <td>{api_info.response}</td>
+                                    <td>{api_info.swagger_url}</td>
+                            </tr>
+                            }).collect::<Vec<_>>()}
+                        </table>
+                    })}
+                </Suspense>
+            </div>
         </main>
     }
 }
