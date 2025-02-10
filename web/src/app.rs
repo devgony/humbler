@@ -1,7 +1,7 @@
 use std::env;
 
 use humbler_core::humbler::{ApiInfo, Humbler};
-use leptos::prelude::*;
+use leptos::{html::Input, prelude::*};
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
@@ -51,7 +51,7 @@ pub fn App() -> impl IntoView {
 }
 
 #[server]
-async fn run_humbler_handler() -> Result<Vec<ApiInfo>, ServerFnError> {
+async fn search(keyword: String) -> Result<Vec<ApiInfo>, ServerFnError> {
     let current_dir = std::env::current_dir().expect("Failed to get current directory");
     let swagger_ui_url = "http://localhost:4000/swagger-ui/index.html".to_owned();
     let openapi_json_url = "core/data/pet.json".to_owned();
@@ -59,7 +59,7 @@ async fn run_humbler_handler() -> Result<Vec<ApiInfo>, ServerFnError> {
     let humbler = Humbler::new(swagger_ui_url, openapi_json_url);
 
     humbler
-        .run()
+        .search(keyword)
         .await
         .map_err(|e| ServerFnError::new(format!("Error: {e}")))
         .map(|h| h.api_infos)
@@ -77,16 +77,27 @@ static HEADERS: [&str; 6] = [
 /// Renders the home page of your application.
 #[component]
 fn HomePage() -> impl IntoView {
-    let async_data = Resource::new(move || {}, |_| run_humbler_handler());
-
+    let input_ref = NodeRef::<Input>::new();
+    let search = Action::new(|input: &String| {
+        let input = input.to_owned();
+        async move { search(input).await }
+    });
+    let value = search.value();
     view! {
         <main>
             <h1 class="text-red-300">"Welcome to Humbler!"</h1>
-            <input placeholder="Search Path" />
-            <button>Search</button>
+        <form on:submit = move |ev| {
+            ev.prevent_default(); // don't reload the page...
+            let input = input_ref.get().expect("input to exist");
+            search.dispatch(input.value());
+        }>
+            <input type="text" node_ref=input_ref placeholder="Search Path" />
+
+            <button type="submit">Search</button>
+        </form>
             <div class="result">
                 <Suspense fallback=move || view!{ <p>"Loading..."</p> }>
-                    {move || async_data.get().map(|api_infos| view! {
+                    {move || value.get().map(|api_infos| view! {
                         <table class="bg-red-300 border border-gray-400">
                             {HEADERS.iter().map(|&header| view!{ <th>{header}</th> }).collect::<Vec<_>>()}
                             {api_infos.unwrap_or_default().into_iter().map(|api_info| view! {

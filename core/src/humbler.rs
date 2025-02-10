@@ -51,6 +51,17 @@ impl Humbler {
         humbler.run().await
     }
 
+    pub async fn search(&self, keyword: String) -> Result<Self> {
+        let mut humbler = Self {
+            swagger_ui_url: self.swagger_ui_url.clone(),
+            openapi_json_url: self.openapi_json_url.clone(),
+            filter_keywords: vec![keyword],
+            api_infos: Vec::new(),
+        };
+
+        humbler.run().await
+    }
+
     pub async fn run(self) -> Result<Self> {
         Ok(Self {
             swagger_ui_url: self.swagger_ui_url.clone(),
