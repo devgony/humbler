@@ -52,7 +52,7 @@ impl Humbler {
     }
 
     pub async fn search(&self, keyword: String) -> Result<Self> {
-        let mut humbler = Self {
+        let humbler = Self {
             swagger_ui_url: self.swagger_ui_url.clone(),
             openapi_json_url: self.openapi_json_url.clone(),
             filter_keywords: vec![keyword],
