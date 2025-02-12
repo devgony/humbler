@@ -84,30 +84,37 @@ fn HomePage() -> impl IntoView {
     });
     let value = search.value();
     view! {
-        <main>
-            <h1 class="text-red-300">"Welcome to Humbler!"</h1>
-        <form on:submit = move |ev| {
+        <main class="container mx-auto p-4 text-center">
+            <h1 class="text-2xl font-bold mb-4 text-purple-600">"Welcome to Humbler!"</h1>
+        <form class="flex flex-col items-center gap-4 mb-8" on:submit = move |ev| {
             ev.prevent_default(); // don't reload the page...
             let input = input_ref.get().expect("input to exist");
             search.dispatch(input.value());
         }>
-            <input type="text" node_ref=input_ref placeholder="Search Path" />
-
-            <button type="submit">Search</button>
+            <input 
+                type="text" 
+                class="w-64 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+                node_ref=input_ref 
+                placeholder="Search Path" 
+            />
+            <button 
+                type="submit"
+                class="w-64 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors duration-200"
+            >Search</button>
         </form>
-            <div class="result">
+            <div class="w-full overflow-x-auto">
                 <Suspense fallback=move || view!{ <p>"Loading..."</p> }>
                     {move || value.get().map(|api_infos| view! {
-                        <table class="bg-red-300 border border-gray-400">
-                            {HEADERS.iter().map(|&header| view!{ <th>{header}</th> }).collect::<Vec<_>>()}
+                        <table class="min-w-full border-collapse border-2 border-purple-600">
+                            {HEADERS.iter().map(|&header| view!{ <th class="border border-purple-600 p-2">{header}</th> }).collect::<Vec<_>>()}
                             {api_infos.unwrap_or_default().into_iter().map(|api_info| view! {
-                            <tr>
-                                    <td>{api_info.path}</td>
-                                    <td>{api_info.method}</td>
-                                    <td>{api_info.parameters.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join(", ")}</td>
-                                    <td>{api_info.request_body}</td>
-                                    <td>{api_info.response}</td>
-                                    <td>{api_info.swagger_url}</td>
+                            <tr class="hover:bg-gray-50">
+                                    <td class="border border-purple-600 p-2">{api_info.path}</td>
+                                    <td class="border border-purple-600 p-2">{api_info.method}</td>
+                                    <td class="border border-purple-600 p-2">{api_info.parameters.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join(", ")}</td>
+                                    <td class="border border-purple-600 p-2">{api_info.request_body}</td>
+                                    <td class="border border-purple-600 p-2">{api_info.response}</td>
+                                    <td class="border border-purple-600 p-2">{api_info.swagger_url}</td>
                             </tr>
                             }).collect::<Vec<_>>()}
                         </table>
